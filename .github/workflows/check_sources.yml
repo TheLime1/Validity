@@ -18,6 +18,6 @@ jobs:
           python -m pip install --upgrade pip
           pip install requests
       - name: Run script
-        run: python your_script.py
+        run: python proxy_checker.py
         env:
           SOURCE1: ${{ secrets.SOURCE1 }}
