@@ -18,3 +18,10 @@ with open("proxy_list.txt", "a") as f:
                 print(f"{proxy} is offline")
         except:
             print(f"{proxy} is offline")
+
+with open("proxy_list.txt", "r") as f:
+    proxies = f.read().split("\n")
+unique_proxies = list(set(proxies))
+with open("proxy_list.txt", "w") as f:
+    for proxy in unique_proxies:
+        f.write(f"{proxy}\n")
