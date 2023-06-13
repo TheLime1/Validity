@@ -6,7 +6,7 @@ source1 = os.environ['SOURCE1']
 response = requests.get(source1)
 proxies = response.text.split("\n")
 
-proxies = random.sample(proxies, 5)  # !comment when done testing
+proxies = random.sample(proxies, 100)  # !comment when done testing
 
 with open("proxy_list.txt", "a") as f:
     for proxy in proxies:
