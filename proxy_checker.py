@@ -1,9 +1,12 @@
 import os
+import random
 import requests
 
 source1 = os.environ['SOURCE1']
 response = requests.get(source1)
 proxies = response.text.split("\n")
+
+proxies = random.sample(proxies, 5)  # !comment when done testing
 
 with open("proxy_list.txt", "a") as f:
     for proxy in proxies:
@@ -18,10 +21,3 @@ with open("proxy_list.txt", "a") as f:
                 print(f"{proxy} is offline")
         except:
             print(f"{proxy} is offline")
-
-with open("proxy_list.txt", "r") as f:
-    proxies = f.read().split("\n")
-unique_proxies = list(set(proxies))
-with open("proxy_list.txt", "w") as f:
-    for proxy in unique_proxies:
-        f.write(f"{proxy}\n")
