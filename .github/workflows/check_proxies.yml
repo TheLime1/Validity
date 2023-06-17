@@ -1,4 +1,4 @@
-name: Check Sources
+name: Check proxies
 on:
   schedule:
     - cron: "0 0 */4 * *" # every 4 days
