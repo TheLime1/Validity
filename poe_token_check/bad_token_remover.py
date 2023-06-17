@@ -3,10 +3,8 @@ import os
 
 
 def remove_bad_tokens():
-    repo_root = os.getcwd()
-
-    poe_tokens_file = os.path.join(repo_root,"poe_token_check", "poe_tokens.txt")
-    token_to_test_file = os.path.join(repo_root, "poe_token_check", "token_to_test.txt")
+    poe_tokens_file = ("poe_tokens.txt")
+    token_to_test_file = ("token_to_test.txt")
     valid_tokens = []
     bad_tokens = []
 
