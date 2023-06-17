@@ -21,6 +21,9 @@ jobs:
           cd poe_token_check
           chmod +x check.sh
           ./check.sh
+        env:
+          DTOKEN: ${{ secrets.DTOKEN }}
+          DCHANNEL: ${{ secrets.DCHANNEL }}
 
       - name: Commit changes
         run: |
