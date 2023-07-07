@@ -1,14 +1,14 @@
 name: Filter Bad Tokens
 on:
   workflow_run:
-    workflows: ["Cleaning Data"]
+    workflows: ["Cleaning Data", "Check POE Token"]
     types:
       - completed
 
 jobs:
   filter:
     runs-on: ubuntu-latest
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    if: ${{ github.event.workflow_run.conclusion == 'failure' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.name == 'Cleaning Data') }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v2
