@@ -1,0 +1,1 @@
+sadly Only freetrail just create an extension that rotates _secure-next-auth.session-token every 10 requests
