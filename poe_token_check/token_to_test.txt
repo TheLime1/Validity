@@ -1,0 +1,2 @@
+__Secure-next-auth.session-token:eyJhbGciOiJkaXIiLCJlbmMiOiJBMjU2R0NNIn0..Vj4c2liFhxtwLYyK.7PTqzMwopMVXjoO_mKtVvvWN1fiDbPVDHk3IiIAhOW4Xv0oQo4qeJspXuQq4owcHLEuKMk1VLfq-No1u9qvY6RpB4Fd3IMZMdtrwGiCLP5LIpwEDh9Ex2Tq180EwYNJezGo4QfHhOSLqpa_YoNEq7LPCoUNn9KBgRgh8N1_td45fNuyN7aqRf-Hc7Odc2-qLvQJIpWLlfk7-P8nEzo8_TxVq84vfHA0Euh1RY-s02D7hC65t4KrmNIIQD59qr2y0VZcuVwdXKcM.t86epkRPTc1UxtxEad7A7g
+Im realy confused on how this one token was generated i.didn't run the gen and also didn't publish it
