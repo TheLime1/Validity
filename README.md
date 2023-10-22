@@ -4,7 +4,7 @@ Validity is a tool to check and export valid proxies and tokens for various serv
 
 ## Proxies
 
-- HTTP :The list update every 4 days. [check the RAW](https://raw.githubusercontent.com/TheLime1/online-proxy-list/main/proxy_list.txt)
+- HTTP :The list update every 4 days. [check the RAW](https://raw.githubusercontent.com/TheLime1/Validity/main/proxy_check/proxy_list.txt)
 
 ## Tokens
 
