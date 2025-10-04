@@ -14,7 +14,7 @@ class HeaderManager:
         self.headers_file = headers_file
         self.headers_cache = None
         self._load_headers()
-    
+
     def _load_headers(self):
         """Load headers from JSON file into memory"""
         try:
@@ -22,14 +22,15 @@ class HeaderManager:
                 with open(self.headers_file, 'r', encoding='utf-8') as f:
                     data = json.load(f)
                     self.headers_cache = data.get('headers', [])
-                    print(f"✅ Loaded {len(self.headers_cache)} headers from {self.headers_file}")
+                    print(
+                        f"✅ Loaded {len(self.headers_cache)} headers from {self.headers_file}")
             else:
                 print(f"⚠️  Headers file not found: {self.headers_file}")
                 self._create_fallback_headers()
         except Exception as e:
             print(f"❌ Error loading headers: {e}")
             self._create_fallback_headers()
-    
+
     def _create_fallback_headers(self):
         """Create basic fallback headers if file loading fails"""
         self.headers_cache = [
@@ -49,30 +50,30 @@ class HeaderManager:
             }
         ]
         print(f"🔄 Using {len(self.headers_cache)} fallback headers")
-    
+
     def get_random_header(self):
         """Get a random header from the loaded headers"""
         if not self.headers_cache:
             self._create_fallback_headers()
-        
+
         return random.choice(self.headers_cache).copy()
-    
+
     def get_multiple_random_headers(self, count=10):
         """Get multiple random headers for batch operations"""
         if not self.headers_cache:
             self._create_fallback_headers()
-        
+
         return [random.choice(self.headers_cache).copy() for _ in range(count)]
-    
+
     def reload_headers(self):
         """Reload headers from file (useful if file was updated)"""
         self._load_headers()
-    
+
     def get_stats(self):
         """Get statistics about loaded headers"""
         if not self.headers_cache:
             return {"total": 0, "unique_user_agents": 0}
-        
+
         user_agents = {h.get("User-Agent", "") for h in self.headers_cache}
         return {
             "total": len(self.headers_cache),
@@ -85,9 +86,12 @@ class HeaderManager:
 header_manager = HeaderManager()
 
 # Convenience functions
+
+
 def get_random_header():
     """Get a random header - convenience function"""
     return header_manager.get_random_header()
+
 
 def get_random_headers(count=10):
     """Get multiple random headers - convenience function"""
@@ -97,19 +101,19 @@ def get_random_headers(count=10):
 if __name__ == "__main__":
     # Test the header manager
     print("🧪 Testing Header Manager...")
-    
+
     # Get stats
     stats = header_manager.get_stats()
     print(f"📊 Stats: {stats}")
-    
+
     # Get a random header
     header = get_random_header()
     print(f"\n🎲 Random header sample:")
     for key, value in header.items():
         print(f"  {key}: {value}")
-    
+
     # Get multiple headers
     headers = get_random_headers(3)
     print(f"\n🎲 Got {len(headers)} random headers")
-    
+
     print("✅ Header Manager test completed!")
