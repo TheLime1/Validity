@@ -18,8 +18,7 @@ from datetime import datetime, timedelta
 
 
 class ProxyValidator:
-    def __init__(self, max_proxies_per_type=1000, timeout=3, max_workers=None, batch_size=50):
-        self.max_proxies_per_type = max_proxies_per_type
+    def __init__(self, timeout=3, max_workers=None, batch_size=50):
         self.timeout = timeout
         # Dynamic worker adjustment based on system capabilities
         if max_workers is None:
@@ -484,13 +483,24 @@ class ProxyValidator:
                 proxy = future_to_proxy[future]
                 try:
                     if future.result():
-                        alive_new_proxies.add(proxy)
-                        # Add to instance variable for periodic saving
-                        if proxy_type == "http":
-                            self.alive_proxies_http.add(proxy)
+                        # Double-check for duplicates even among alive proxies
+                        is_duplicate = False
+                        if proxy_type == "http" and proxy in self.alive_proxies_http:
+                            is_duplicate = True
+                        elif proxy_type == "socks5" and proxy in self.alive_proxies_socks5:
+                            is_duplicate = True
+
+                        if not is_duplicate:
+                            alive_new_proxies.add(proxy)
+                            # Add to instance variable for periodic saving
+                            if proxy_type == "http":
+                                self.alive_proxies_http.add(proxy)
+                            else:
+                                self.alive_proxies_socks5.add(proxy)
+                            self.log(f"✓ New {proxy} is alive")
                         else:
-                            self.alive_proxies_socks5.add(proxy)
-                        self.log(f"✓ New {proxy} is alive")
+                            self.log(
+                                f"⚠ Skipped duplicate alive proxy: {proxy}")
                     else:
                         self.log(f"✗ New {proxy} is dead")
                 except Exception as e:
@@ -611,12 +621,12 @@ class ProxyValidator:
 
     def save_proxies(self, proxies, proxy_type):
         """
-        Save proxies to file, maintaining max limit
+        Save all valid proxies to file (no limit)
         """
         file_path = os.path.join(self.data_dir, f"{proxy_type}.txt")
 
-        # Convert to list and limit to max proxies
-        proxy_list = list(proxies)[:self.max_proxies_per_type]
+        # Convert to list - no limit, save all valid proxies
+        proxy_list = list(proxies)
 
         # Create data directory if it doesn't exist
         os.makedirs(self.data_dir, exist_ok=True)
