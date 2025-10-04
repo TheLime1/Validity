@@ -1,1 +1,2 @@
-poe-api==0.4.15
+requests
+PySocks

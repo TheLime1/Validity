@@ -1,0 +1,2 @@
+# This file will contain validated SOCKS5 proxies
+# Format: IP:PORT

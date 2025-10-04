@@ -1,0 +1,5 @@
+link,type
+https://raw.githubusercontent.com/TheSpeedX/SOCKS-List/master/socks5.txt,socks5
+https://cdn.jsdelivr.net/gh/proxifly/free-proxy-list@main/proxies/protocols/socks5/data.txt,socks5
+https://raw.githubusercontent.com/TheSpeedX/SOCKS-List/master/http.txt,http
+https://cdn.jsdelivr.net/gh/proxifly/free-proxy-list@main/proxies/protocols/http/data.txt,http
