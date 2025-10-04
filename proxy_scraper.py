@@ -5,7 +5,9 @@ Daily script to maintain up to 1000 alive proxies per type (HTTP/SOCKS5)
 """
 
 import csv
+import multiprocessing
 import os
+import random
 import requests
 import signal
 import sys
@@ -16,10 +18,16 @@ from datetime import datetime, timedelta
 
 
 class ProxyValidator:
-    def __init__(self, max_proxies_per_type=1000, timeout=5, max_workers=50):
+    def __init__(self, max_proxies_per_type=1000, timeout=3, max_workers=None, batch_size=50):
         self.max_proxies_per_type = max_proxies_per_type
         self.timeout = timeout
-        self.max_workers = max_workers
+        # Dynamic worker adjustment based on system capabilities
+        if max_workers is None:
+            self.max_workers = min(
+                150, max(25, multiprocessing.cpu_count() * 8))
+        else:
+            self.max_workers = max_workers
+        self.batch_size = batch_size  # Equal amount to take from each source per batch
         self.data_dir = "data"
         self.sources_file = "sources.csv"
 
@@ -64,6 +72,26 @@ class ProxyValidator:
         """Simple logging with timestamp"""
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         print(f"[{timestamp}] {message}")
+
+    def log_performance_config(self):
+        """Log the current performance configuration"""
+        cpu_count = multiprocessing.cpu_count()
+        self.log("🔧 Performance Configuration:")
+        self.log(f"   CPU Cores: {cpu_count}")
+        self.log(
+            f"   Max Workers: {self.max_workers} (dynamic: {cpu_count * 8}, capped: 25-150)")
+        self.log(f"   Timeout: {self.timeout}s (optimized for speed)")
+        self.log(
+            f"   Batch Size: {self.batch_size} (smaller = more frequent rotation)")
+
+        # Performance tier classification
+        if self.max_workers >= 120:
+            tier = "HIGH-PERFORMANCE"
+        elif self.max_workers >= 75:
+            tier = "BALANCED"
+        else:
+            tier = "CONSERVATIVE"
+        self.log(f"   Performance Tier: {tier}")
 
     def _init_proxy_log(self):
         """Initialize the detailed proxy validation log CSV file"""
@@ -324,6 +352,11 @@ class ProxyValidator:
             p for p in existing_proxies if p not in self.dead_proxies]
         skipped_dead = len(existing_proxies) - len(proxies_to_check)
 
+        # Scramble testing order for better load distribution
+        random.shuffle(proxies_to_check)
+        self.log(
+            f"🎲 Scrambled {len(proxies_to_check)} existing {proxy_type} proxies for random testing order")
+
         # Remove known dead proxies from the data file
         if skipped_dead > 0:
             self.log(
@@ -428,14 +461,20 @@ class ProxyValidator:
                 f"No new {proxy_type} proxies to validate (after deduplication)")
             return set()
 
+        # Convert to list and scramble testing order
+        new_proxies_list = list(new_proxies)
+        random.shuffle(new_proxies_list)
         self.log(
-            f"Validating {len(new_proxies)} new {proxy_type} proxies (skipped {len(proxies & self.dead_proxies)} known dead)...")
+            f"🎲 Scrambled {len(new_proxies_list)} new {proxy_type} proxies for random testing order")
+
+        self.log(
+            f"Validating {len(new_proxies_list)} new {proxy_type} proxies (skipped {len(proxies & self.dead_proxies)} known dead)...")
         alive_new_proxies = set()
 
         with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
             future_to_proxy = {
                 executor.submit(self.is_proxy_alive, proxy, proxy_type, self.proxy_sources.get(proxy)): proxy
-                for proxy in new_proxies
+                for proxy in new_proxies_list
             }
 
             for future in as_completed(future_to_proxy):
@@ -460,6 +499,114 @@ class ProxyValidator:
 
         self.log(
             f"Found {len(alive_new_proxies)} alive new {proxy_type} proxies")
+        return alive_new_proxies
+
+    def validate_new_proxies_fair_rotation(self, proxies_by_source, proxy_type, existing_proxies):
+        """
+        Validate new proxies using fair rotation system:
+        1. Take equal amounts from each source
+        2. Scramble the batch
+        3. Test the batch
+        4. Repeat until all sources exhausted
+        """
+        # Organize proxies by source and filter out existing/dead
+        source_queues = {}
+        total_new_proxies = 0
+
+        for source_url, proxies in proxies_by_source.items():
+            # Enhanced deduplication: remove existing proxies AND known dead proxies
+            new_proxies = proxies - existing_proxies - self.dead_proxies
+            if new_proxies:
+                source_queues[source_url] = list(new_proxies)
+                # Shuffle each source's proxies
+                random.shuffle(source_queues[source_url])
+                total_new_proxies += len(new_proxies)
+                self.log(
+                    f"📍 {source_url}: {len(new_proxies)} new proxies (after deduplication)")
+
+        if not source_queues:
+            self.log(
+                f"No new {proxy_type} proxies to validate (after deduplication)")
+            return set()
+
+        self.log(
+            f"🔄 Fair rotation validation: {total_new_proxies} new {proxy_type} proxies from {len(source_queues)} sources")
+        self.log(
+            f"📦 Batch size: {self.batch_size} proxies per source per round")
+
+        alive_new_proxies = set()
+        round_number = 1
+
+        # Continue until all source queues are empty
+        while any(source_queues.values()):
+            if self.shutdown_requested:
+                break
+
+            # Collect equal amounts from each source for this batch
+            current_batch = []
+            sources_in_batch = []
+
+            for source_url in list(source_queues.keys()):
+                if not source_queues[source_url]:
+                    continue  # Skip empty sources
+
+                # Take up to batch_size proxies from this source
+                batch_from_source = source_queues[source_url][:self.batch_size]
+                source_queues[source_url] = source_queues[source_url][self.batch_size:]
+
+                current_batch.extend(batch_from_source)
+                sources_in_batch.append((source_url, len(batch_from_source)))
+
+                # Remove source if depleted
+                if not source_queues[source_url]:
+                    del source_queues[source_url]
+
+            if not current_batch:
+                break
+
+            # Scramble the batch for fair testing order
+            random.shuffle(current_batch)
+
+            self.log(
+                f"🎲 Round {round_number}: Testing {len(current_batch)} scrambled proxies")
+            for source_url, count in sources_in_batch:
+                self.log(f"   📤 {count} from {source_url}")
+
+            # Test the scrambled batch concurrently
+            with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
+                future_to_proxy = {
+                    executor.submit(self.is_proxy_alive, proxy, proxy_type, self.proxy_sources.get(proxy)): proxy
+                    for proxy in current_batch
+                }
+
+                batch_alive = 0
+                for future in as_completed(future_to_proxy):
+                    if self.shutdown_requested:
+                        break
+
+                    proxy = future_to_proxy[future]
+                    try:
+                        if future.result():
+                            alive_new_proxies.add(proxy)
+                            batch_alive += 1
+                            # Add to instance variable for periodic saving
+                            if proxy_type == "http":
+                                self.alive_proxies_http.add(proxy)
+                            else:
+                                self.alive_proxies_socks5.add(proxy)
+                            self.log(f"✓ {proxy} is alive")
+                        else:
+                            self.log(f"✗ {proxy} is dead")
+                    except Exception as e:
+                        self.log(f"✗ {proxy} validation error: {e}")
+                        self.save_dead_proxy(proxy)
+
+            self.log(
+                f"✅ Round {round_number} completed: {batch_alive}/{len(current_batch)} alive")
+            round_number += 1
+
+        self.log(
+            f"🏁 Fair rotation completed: Found {len(alive_new_proxies)} alive new {proxy_type} proxies")
         return alive_new_proxies
 
     def save_proxies(self, proxies, proxy_type):
@@ -510,6 +657,10 @@ class ProxyValidator:
         """
         self.log("Starting proxy validation and scraping...")
 
+        # Log performance configuration
+        self.log_performance_config()
+        self.log("")
+
         # Load dead proxies to skip them
         self.load_dead_proxies()
 
@@ -540,8 +691,8 @@ class ProxyValidator:
                 else:
                     self.alive_proxies_socks5.update(alive_existing)
 
-                # Step 2: Fetch new proxies from sources (concurrently)
-                all_new_proxies = set()
+                # Step 2: Fetch new proxies from sources (concurrently) and organize by source
+                proxies_by_source = {}
                 self.log(
                     f"Fetching {proxy_type} proxies from {len(sources[proxy_type])} sources concurrently...")
 
@@ -557,25 +708,21 @@ class ProxyValidator:
                         source_url = future_to_source[future]
                         try:
                             new_proxies = future.result()
-                            # Track duplicates across sources for logging
-                            duplicates_found = all_new_proxies & new_proxies
-                            if duplicates_found:
-                                self.log(
-                                    f"Found {len(duplicates_found)} duplicate proxies from {source_url}")
-
-                            all_new_proxies.update(new_proxies)
+                            proxies_by_source[source_url] = new_proxies
                             self.log(
                                 f"✓ Fetched {len(new_proxies)} proxies from {source_url}")
                         except Exception as e:
                             self.log(
                                 f"✗ Error fetching from {source_url}: {e}")
 
+                total_fetched = sum(len(proxies)
+                                    for proxies in proxies_by_source.values())
                 self.log(
-                    f"Total {len(all_new_proxies)} unique {proxy_type} proxies fetched from all sources")
+                    f"Total {total_fetched} {proxy_type} proxies fetched from {len(proxies_by_source)} sources")
 
-                # Step 3: Validate new proxies (with enhanced deduplication)
-                alive_new = self.validate_new_proxies(
-                    all_new_proxies, proxy_type, alive_existing)
+                # Step 3: Validate new proxies using fair rotation system
+                alive_new = self.validate_new_proxies_fair_rotation(
+                    proxies_by_source, proxy_type, alive_existing)
 
                 # Step 4: Combine and limit proxies
                 all_alive_proxies = alive_existing | alive_new
