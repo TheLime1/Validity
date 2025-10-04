@@ -16,11 +16,19 @@ Validity is now a dedicated proxy validator tool that checks and exports valid p
 ## Usage
 
 1. Install dependencies:
+
 ```bash
 pip install -r requirements.txt
 ```
 
-2. Run the proxy scraper:
+2. Generate random headers (optional but recommended):
+
+```bash
+python generate_headers.py
+```
+
+3. Run the proxy scraper:
+
 ```bash
 python proxy_scraper.py
 ```
@@ -28,8 +36,8 @@ python proxy_scraper.py
 The script will:
 - First validate existing proxies in the data folder
 - Remove dead proxies
-- Fetch new proxies from sources
-- Validate new proxies
+- Fetch new proxies from sources (concurrently)
+- Validate new proxies using random headers
 - Save up to 1000 alive proxies per type
 
 ## Output
