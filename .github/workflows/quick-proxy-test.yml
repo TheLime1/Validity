@@ -4,85 +4,85 @@ on:
   workflow_dispatch:
     inputs:
       test_duration:
-        description: 'Test duration in minutes'
+        description: "Test duration in minutes"
         required: false
-        default: '3'
+        default: "3"
         type: string
       proxy_types:
-        description: 'Proxy types to test'
+        description: "Proxy types to test"
         required: false
-        default: 'both'
+        default: "both"
         type: choice
         options:
-        - both
-        - http
-        - socks5
+          - both
+          - http
+          - socks5
 
 jobs:
   quick-test:
     runs-on: ubuntu-latest
     timeout-minutes: 8
-    
+
     steps:
-    - uses: actions/checkout@v4
-      with:
-        token: ${{ secrets.GITHUB_TOKEN }}
-        
-    - uses: actions/setup-python@v4
-      with:
-        python-version: '3.11'
-        
-    - name: Install dependencies
-      run: |
-        pip install -r requirements.txt
-        
-    - name: Show current status
-      run: |
-        echo "📊 Current proxy counts:"
-        [ -f data/http.txt ] && echo "HTTP: $(grep -c '^[0-9]' data/http.txt || echo 0)" || echo "HTTP: 0"
-        [ -f data/socks5.txt ] && echo "SOCKS5: $(grep -c '^[0-9]' data/socks5.txt || echo 0)" || echo "SOCKS5: 0"
-        echo "Starting ${{ github.event.inputs.test_duration || '3' }} minute test..."
-        
-    - name: Run quick test
-      run: |
-        duration="${{ github.event.inputs.test_duration || '3' }}"
-        echo "� Starting ${duration}-minute quick test"
-        
-        timeout ${duration}m python proxy_scraper.py || {
-          code=$?
-          if [ $code -eq 124 ]; then
-            echo "✅ Quick test completed after ${duration} minutes"
-          else
-            echo "⚠️ Test exited with code: $code"
-          fi
-        }
-        
-    - name: Show results
-      if: always()
-      run: |
-        echo "📊 Quick test results:"
-        if [ -f data/http.txt ]; then
-          count=$(grep -c '^[0-9]' data/http.txt || echo 0)
-          echo "🌐 HTTP: $count proxies"
-          grep '^[0-9]' data/http.txt | tail -3 || echo "No HTTP proxies"
-        fi
-        if [ -f data/socks5.txt ]; then
-          count=$(grep -c '^[0-9]' data/socks5.txt || echo 0)
-          echo "🔒 SOCKS5: $count proxies"  
-          grep '^[0-9]' data/socks5.txt | tail -3 || echo "No SOCKS5 proxies"
-        fi
-        
-    - name: Commit results
-      if: always()
-      run: |
-        git config --local user.email "action@github.com"
-        git config --local user.name "Quick Test Action"
-        git add data/ || true
-        if ! git diff --staged --quiet; then
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: Show current status
+        run: |
+          echo "📊 Current proxy counts:"
+          [ -f data/http.txt ] && echo "HTTP: $(grep -c '^[0-9]' data/http.txt || echo 0)" || echo "HTTP: 0"
+          [ -f data/socks5.txt ] && echo "SOCKS5: $(grep -c '^[0-9]' data/socks5.txt || echo 0)" || echo "SOCKS5: 0"
+          echo "Starting ${{ github.event.inputs.test_duration || '3' }} minute test..."
+
+      - name: Run quick test
+        run: |
           duration="${{ github.event.inputs.test_duration || '3' }}"
-          git commit -m "🚀 Quick test (${duration}min) - $(date '+%Y-%m-%d %H:%M')"
-          git push
-          echo "✅ Results committed"
-        else
-          echo "� No changes to commit"
-        fi
+          echo "� Starting ${duration}-minute quick test"
+
+          timeout ${duration}m python proxy_scraper.py || {
+            code=$?
+            if [ $code -eq 124 ]; then
+              echo "✅ Quick test completed after ${duration} minutes"
+            else
+              echo "⚠️ Test exited with code: $code"
+            fi
+          }
+
+      - name: Show results
+        if: always()
+        run: |
+          echo "📊 Quick test results:"
+          if [ -f data/http.txt ]; then
+            count=$(grep -c '^[0-9]' data/http.txt || echo 0)
+            echo "🌐 HTTP: $count proxies"
+            grep '^[0-9]' data/http.txt | tail -3 || echo "No HTTP proxies"
+          fi
+          if [ -f data/socks5.txt ]; then
+            count=$(grep -c '^[0-9]' data/socks5.txt || echo 0)
+            echo "🔒 SOCKS5: $count proxies"  
+            grep '^[0-9]' data/socks5.txt | tail -3 || echo "No SOCKS5 proxies"
+          fi
+
+      - name: Commit results
+        if: always()
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "Quick Test Action"
+          git add data/ || true
+          if ! git diff --staged --quiet; then
+            duration="${{ github.event.inputs.test_duration || '3' }}"
+            git commit -m "🚀 Quick test (${duration}min) - $(date '+%Y-%m-%d %H:%M')"
+            git push
+            echo "✅ Results committed"
+          else
+            echo "� No changes to commit"
+          fi
