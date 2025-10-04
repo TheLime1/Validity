@@ -52,12 +52,129 @@ The scraper will:
 
 ## Quality Analysis
 
-The quality analyzer provides detailed statistics about each proxy source:
+The quality analyzer (`analyze_proxy_quality.py`) provides detailed statistics about each proxy source with comprehensive analysis options.
 
-- **Alive/Dead percentages** per source
-- **Response time analysis** for alive proxies
-- **Quality scores** and source rankings
-- **Performance metrics** and recommendations
+### Parameters & Usage
+
+#### Basic Usage
+```bash
+python analyze_proxy_quality.py
+```
+
+#### All Available Parameters
+
+| Parameter         | Type   | Default                         | Description                                        |
+| ----------------- | ------ | ------------------------------- | -------------------------------------------------- |
+| `--days`          | int    | 7                               | Number of days to analyze (1-365)                  |
+| `--save`          | flag   | False                           | Save quality report to CSV file                    |
+| `--performance`   | flag   | False                           | Show top 10 fastest performing proxies             |
+| `--worst-sources` | flag   | False                           | Show detailed worst sources analysis by proxy type |
+| `--log-file`      | string | `data/proxy_validation_log.csv` | Path to proxy validation log file                  |
+
+#### Detailed Examples
+
+**1. Basic Quality Report (Last 7 Days)**
+```bash
+python analyze_proxy_quality.py
+```
+Shows source rankings, alive/dead percentages, response times, and worst sources by type.
+
+**2. Extended Analysis Period**
+```bash
+python analyze_proxy_quality.py --days 30
+```
+Analyze proxy performance over the last 30 days for trend analysis.
+
+**3. Quick Daily Check**
+```bash
+python analyze_proxy_quality.py --days 1
+```
+View today's proxy validation results only.
+
+**4. Performance Analysis**
+```bash
+python analyze_proxy_quality.py --performance
+```
+Shows the 10 fastest responding proxies with their response times and sources.
+
+**5. Worst Sources Analysis**
+```bash
+python analyze_proxy_quality.py --worst-sources
+```
+Detailed analysis of the 5 worst performing sources for each proxy type (HTTP, SOCKS4, SOCKS5) with performance warnings:
+- 🚨 **CRITICAL**: <10% success rate (remove immediately)  
+- ⚠️ **WARNING**: <20% success rate (consider replacement)
+
+**6. Comprehensive Analysis with Export**
+```bash
+python analyze_proxy_quality.py --days 14 --save --performance --worst-sources
+```
+Complete analysis with:
+- 14-day data analysis
+- CSV export to `data/source_quality_report.csv`
+- Top performing proxies list
+- Detailed worst sources breakdown
+
+**7. Custom Log File Analysis**
+```bash
+python analyze_proxy_quality.py --log-file "custom/path/logs.csv" --days 7
+```
+Analyze a different validation log file.
+
+### Output Features
+
+#### Main Quality Report Includes:
+- **Source Rankings**: Sorted by quality score (alive percentage)
+- **Detailed Metrics**: Total tested, alive/dead counts, response times
+- **Proxy Types**: Which types each source provides
+- **Overall Statistics**: Aggregate performance across all sources
+- **Worst Sources by Type**: Bottom 5 sources for each proxy type
+- **Smart Recommendations**: Data-driven suggestions for source management
+
+#### CSV Export Format
+When using `--save`, generates `data/source_quality_report.csv` with:
+```csv
+source_url,total_tested,alive_count,dead_count,alive_percent,quality_score,analysis_date
+```
+
+#### Performance Analysis Shows:
+```
+🚀 TOP PERFORMING PROXIES (Last 7 days):
+#1  192.168.1.100:8080  |  245ms | http   | https://source1.com
+#2  10.0.0.50:1080      |  289ms | socks5 | https://source2.com
+```
+
+#### Worst Sources Analysis Example:
+```
+📍 HTTP PROXIES - Bottom 5 Sources:
+#1 https://bad-source.com
+   📊 Total Tested: 1,000
+   ✅ Alive: 12
+   💯 Success Rate: 1.2%
+   🚨 CRITICAL: Consider removing this source immediately
+```
+
+### Use Cases
+
+**Daily Monitoring**
+```bash
+python analyze_proxy_quality.py --days 1 --performance
+```
+
+**Weekly Review**
+```bash
+python analyze_proxy_quality.py --save --worst-sources
+```
+
+**Monthly Source Audit**
+```bash
+python analyze_proxy_quality.py --days 30 --save --performance --worst-sources
+```
+
+**Source Quality Investigation**
+```bash
+python analyze_proxy_quality.py --days 7 --worst-sources
+```
 
 View analysis for different time periods:
 ```bash

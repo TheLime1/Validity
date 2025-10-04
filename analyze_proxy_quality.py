@@ -107,6 +107,85 @@ class ProxyQualityAnalyzer:
 
         return source_stats
 
+    def analyze_worst_sources_by_type(self, days=7):
+        """Analyze the 5 worst sources for each proxy type"""
+        data = self.get_date_range_data(days)
+        if data is None or len(data) == 0:
+            return None
+
+        # Get all proxy types
+        proxy_types = data['proxy_type'].unique()
+        worst_by_type = {}
+
+        for proxy_type in proxy_types:
+            type_data = data[data['proxy_type'] == proxy_type]
+            type_stats = {}
+
+            for source_url in type_data['source_url'].unique():
+                if source_url == 'existing':
+                    continue
+
+                source_data = type_data[type_data['source_url'] == source_url]
+                total_tested = len(source_data)
+                alive_count = len(
+                    source_data[source_data['status'] == 'alive'])
+
+                # Only include sources with at least 10 tested proxies for meaningful stats
+                if total_tested >= 10:
+                    alive_percent = (alive_count / total_tested *
+                                     100) if total_tested > 0 else 0
+                    type_stats[source_url] = {
+                        'total_tested': total_tested,
+                        'alive_count': alive_count,
+                        'alive_percent': alive_percent,
+                        'quality_score': alive_percent
+                    }
+
+            # Sort by quality score (worst first) and take top 5
+            if type_stats:
+                sorted_worst = sorted(type_stats.items(),
+                                      key=lambda x: x[1]['quality_score'])
+                worst_by_type[proxy_type] = sorted_worst[:5]
+
+        return worst_by_type
+
+    def print_worst_sources_analysis(self, days=7):
+        """Print detailed analysis of worst sources by proxy type"""
+        worst_by_type = self.analyze_worst_sources_by_type(days)
+        if not worst_by_type:
+            print("No data available for worst sources analysis")
+            return
+
+        print(f"\n{'='*80}")
+        print(f"🚨 DETAILED WORST SOURCES ANALYSIS (Last {days} days)")
+        print(f"{'='*80}")
+        print(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        print()
+
+        for proxy_type, worst_sources in worst_by_type.items():
+            print(f"📍 {proxy_type.upper()} PROXIES - Bottom 5 Sources:")
+            print("-" * 60)
+
+            if not worst_sources:
+                print("   No sources with sufficient data (minimum 10 proxies required)")
+                print()
+                continue
+
+            for i, (source_url, metrics) in enumerate(worst_sources, 1):
+                print(f"#{i} {source_url}")
+                print(f"   📊 Total Tested: {metrics['total_tested']:,}")
+                print(f"   ✅ Alive: {metrics['alive_count']:,}")
+                print(f"   💯 Success Rate: {metrics['alive_percent']:.1f}%")
+
+                # Add recommendation for very poor sources
+                if metrics['alive_percent'] < 10:
+                    print("   🚨 CRITICAL: Consider removing this source immediately")
+                elif metrics['alive_percent'] < 20:
+                    print("   ⚠️  WARNING: Poor performance, consider replacement")
+                print()
+
+        print(f"{'='*80}")
+
     def print_quality_report(self, days=7):
         """Print a formatted quality report"""
         stats = self.analyze_source_quality(days)
@@ -143,16 +222,32 @@ class ProxyQualityAnalyzer:
         total_alive = sum(s['alive_count'] for s in stats.values())
         total_dead = sum(s['dead_count'] for s in stats.values())
 
-        print(f"📈 OVERALL STATISTICS:")
-        print(f"   Total Proxies Tested: {total_tested:,}")
+        print("📈 OVERALL STATISTICS:")
         print(
             f"   Total Alive: {total_alive:,} ({(total_alive/total_tested*100):.1f}%)")
         print(
             f"   Total Dead: {total_dead:,} ({(total_dead/total_tested*100):.1f}%)")
         print(f"   Sources Analyzed: {len(stats)}")
 
+        # Show worst sources by type
+        worst_by_type = self.analyze_worst_sources_by_type(days)
+        if worst_by_type:
+            print("\n🚨 WORST SOURCES BY PROXY TYPE:")
+            print("-" * 80)
+            for proxy_type, worst_sources in worst_by_type.items():
+                print(f"\n📍 {proxy_type.upper()} PROXIES - Bottom 5 Sources:")
+                if not worst_sources:
+                    print("   No sources with sufficient data (min 10 proxies)")
+                    continue
+
+                for i, (source_url, metrics) in enumerate(worst_sources, 1):
+                    print(f"   #{i} {source_url}")
+                    print(f"      📊 Tested: {metrics['total_tested']:,} | "
+                          f"✅ Alive: {metrics['alive_count']:,} | "
+                          f"💯 Success Rate: {metrics['alive_percent']:.1f}%")
+
         # Recommendations
-        print(f"\n💡 RECOMMENDATIONS:")
+        print("\n💡 RECOMMENDATIONS:")
         best_source = sorted_sources[0] if sorted_sources else None
         worst_source = sorted_sources[-1] if sorted_sources else None
 
@@ -163,7 +258,15 @@ class ProxyQualityAnalyzer:
                 f"   🚨 Worst Source: {worst_source[0]} ({worst_source[1]['quality_score']:.1f}% alive)")
 
             if worst_source[1]['quality_score'] < 20:
-                print(f"   ⚠️  Consider removing sources with <20% alive rate")
+                print("   ⚠️  Consider removing sources with <20% alive rate")
+
+        # Additional recommendations based on worst sources by type
+        if worst_by_type:
+            print("   📋 Type-specific recommendations:")
+            for proxy_type, worst_sources in worst_by_type.items():
+                if worst_sources and worst_sources[0][1]['alive_percent'] < 15:
+                    print(
+                        f"   ⚠️  {proxy_type}: Consider replacing worst performing sources")
 
         print(f"{'='*80}")
 
@@ -248,6 +351,8 @@ def main():
                         help='Save report to CSV file')
     parser.add_argument('--performance', action='store_true',
                         help='Show top performing proxies')
+    parser.add_argument('--worst-sources', action='store_true',
+                        help='Show worst sources by proxy type')
     parser.add_argument('--log-file', default='data/proxy_validation_log.csv',
                         help='Path to proxy validation log file')
 
@@ -260,6 +365,10 @@ def main():
 
     # Print main quality report
     analyzer.print_quality_report(args.days)
+
+    # Show worst sources analysis if requested
+    if args.worst_sources:
+        analyzer.print_worst_sources_analysis(args.days)
 
     # Save report if requested
     if args.save:
