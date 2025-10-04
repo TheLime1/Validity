@@ -12,7 +12,7 @@ import sys
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime
+from datetime import datetime, timedelta
 
 
 class ProxyValidator:
@@ -23,10 +23,20 @@ class ProxyValidator:
         self.data_dir = "data"
         self.sources_file = "sources.csv"
 
-        # Dead proxies tracking
+        # Dead proxies tracking with timestamps
         self.dead_proxies_file = os.path.join(
             self.data_dir, "dead_proxies.txt")
-        self.dead_proxies = set()
+        self.dead_proxies = set()  # Set of proxy IPs for fast lookup
+        self.dead_proxies_with_dates = {}  # Dict with proxy -> timestamp mapping
+
+        # Detailed logging for quality analysis
+        self.proxy_log_file = os.path.join(
+            self.data_dir, "proxy_validation_log.csv")
+        self.proxy_log_lock = threading.Lock()
+        self._init_proxy_log()
+
+        # Source tracking for quality analysis
+        self.proxy_sources = {}  # proxy -> source_url mapping
 
         # Periodic saving
         self.alive_proxies_http = set()
@@ -55,6 +65,38 @@ class ProxyValidator:
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         print(f"[{timestamp}] {message}")
 
+    def _init_proxy_log(self):
+        """Initialize the detailed proxy validation log CSV file"""
+        # Create data directory if it doesn't exist
+        os.makedirs(self.data_dir, exist_ok=True)
+
+        # Create CSV header if file doesn't exist
+        if not os.path.exists(self.proxy_log_file):
+            with open(self.proxy_log_file, 'w', newline='', encoding='utf-8') as f:
+                writer = csv.writer(f)
+                writer.writerow([
+                    'timestamp', 'proxy', 'proxy_type', 'source_url',
+                    'status', 'response_time_ms', 'test_url_used'
+                ])
+
+    def log_proxy_validation(self, proxy, proxy_type, source_url, status, response_time_ms=None, test_url=None):
+        """Log detailed proxy validation results to CSV file"""
+        with self.proxy_log_lock:
+            try:
+                with open(self.proxy_log_file, 'a', newline='', encoding='utf-8') as f:
+                    writer = csv.writer(f)
+                    writer.writerow([
+                        datetime.now().isoformat(),
+                        proxy,
+                        proxy_type,
+                        source_url or 'existing',
+                        status,
+                        response_time_ms or '',
+                        test_url or ''
+                    ])
+            except Exception as e:
+                self.log(f"Error logging proxy validation: {e}")
+
     def signal_handler(self, signum, frame):
         """Handle Ctrl+C and other termination signals"""
         self.log("\n⚠️  Shutdown signal received. Saving current progress...")
@@ -64,28 +106,90 @@ class ProxyValidator:
         sys.exit(0)
 
     def load_dead_proxies(self):
-        """Load previously identified dead proxies to skip them"""
+        """Load previously identified dead proxies and clean old entries (30+ days)"""
         if not os.path.exists(self.dead_proxies_file):
             self.log("No dead proxies file found, creating new one")
             return
 
         try:
+            current_time = datetime.now()
+            cutoff_date = current_time - timedelta(days=30)
+
+            valid_dead_proxies = []
+            old_proxies_count = 0
+
             with open(self.dead_proxies_file, 'r', encoding='utf-8') as f:
-                self.dead_proxies = {
-                    line.strip() for line in f if line.strip() and not line.startswith('#')}
+                for line in f:
+                    line = line.strip()
+                    if not line or line.startswith('#'):
+                        continue
+
+                    # Parse line format: "proxy,timestamp" or just "proxy" (legacy)
+                    if ',' in line:
+                        proxy, timestamp_str = line.split(',', 1)
+                        try:
+                            proxy_date = datetime.fromisoformat(timestamp_str)
+                            if proxy_date >= cutoff_date:
+                                # Keep proxy (not older than 30 days)
+                                self.dead_proxies.add(proxy)
+                                self.dead_proxies_with_dates[proxy] = proxy_date
+                                valid_dead_proxies.append(
+                                    f"{proxy},{timestamp_str}")
+                            else:
+                                old_proxies_count += 1
+                        except ValueError:
+                            # Invalid timestamp, treat as legacy format
+                            self.dead_proxies.add(proxy)
+                            # Add current timestamp for legacy entries
+                            current_timestamp = current_time.isoformat()
+                            self.dead_proxies_with_dates[proxy] = current_time
+                            valid_dead_proxies.append(
+                                f"{proxy},{current_timestamp}")
+                    else:
+                        # Legacy format without timestamp
+                        self.dead_proxies.add(line)
+                        current_timestamp = current_time.isoformat()
+                        self.dead_proxies_with_dates[line] = current_time
+                        valid_dead_proxies.append(
+                            f"{line},{current_timestamp}")
+
+            # Rewrite the file with only valid (not old) dead proxies
+            if old_proxies_count > 0:
+                self._rewrite_dead_proxies_file(valid_dead_proxies)
+                self.log(
+                    f"Cleaned {old_proxies_count} dead proxies older than 30 days")
+
             self.log(f"Loaded {len(self.dead_proxies)} dead proxies to skip")
+
         except Exception as e:
             self.log(f"Error loading dead proxies: {e}")
 
+    def _rewrite_dead_proxies_file(self, valid_entries):
+        """Rewrite the dead proxies file with only valid entries"""
+        try:
+            os.makedirs(self.data_dir, exist_ok=True)
+            with open(self.dead_proxies_file, 'w', encoding='utf-8') as f:
+                f.write("# Dead Proxies Database with Timestamps\n")
+                f.write("# Format: proxy_ip:port,timestamp\n")
+                f.write("# Auto-cleanup: Entries older than 30 days are removed\n")
+                f.write(f"# Last cleaned: {datetime.now().isoformat()}\n\n")
+                for entry in valid_entries:
+                    f.write(f"{entry}\n")
+        except Exception as e:
+            self.log(f"Error rewriting dead proxies file: {e}")
+
     def save_dead_proxy(self, proxy):
-        """Add a dead proxy to the dead proxies set and file"""
+        """Add a dead proxy to the dead proxies set and file with timestamp"""
         if proxy not in self.dead_proxies:
             self.dead_proxies.add(proxy)
-            # Append to file immediately
+            current_time = datetime.now()
+            self.dead_proxies_with_dates[proxy] = current_time
+
+            # Append to file immediately with timestamp
             try:
                 os.makedirs(self.data_dir, exist_ok=True)
                 with open(self.dead_proxies_file, 'a', encoding='utf-8') as f:
-                    f.write(f"{proxy}\n")
+                    f.write(f"{proxy},{current_time.isoformat()}\n")
             except Exception as e:
                 self.log(f"Error saving dead proxy {proxy}: {e}")
 
@@ -107,7 +211,7 @@ class ProxyValidator:
                 self.save_current_progress()
                 self.last_save_time = time.time()
 
-    def is_proxy_alive(self, proxy, proxy_type):
+    def is_proxy_alive(self, proxy, proxy_type, source_url=None):
         """Check if a proxy is alive by making a test request"""
         if self.shutdown_requested:
             return False
@@ -130,6 +234,7 @@ class ProxyValidator:
                 if self.shutdown_requested:
                     return False
                 try:
+                    start_time = time.time()
                     response = requests.get(
                         test_url,
                         proxies=proxy_dict,
@@ -137,17 +242,61 @@ class ProxyValidator:
                         headers={
                             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
                     )
+                    response_time_ms = int((time.time() - start_time) * 1000)
+
                     if response.status_code == 200:
+                        # Log successful validation
+                        self.log_proxy_validation(
+                            proxy, proxy_type, source_url, 'alive',
+                            response_time_ms, test_url
+                        )
                         return True
                 except requests.RequestException:
                     continue
 
             # If we reach here, proxy is dead
+            self.log_proxy_validation(
+                proxy, proxy_type, source_url, 'dead'
+            )
             self.save_dead_proxy(proxy)
             return False
         except Exception:
+            self.log_proxy_validation(
+                proxy, proxy_type, source_url, 'error'
+            )
             self.save_dead_proxy(proxy)
             return False
+
+    def remove_proxy_from_data_file(self, proxy, proxy_type):
+        """Remove a dead proxy from the active data file"""
+        file_path = os.path.join(self.data_dir, f"{proxy_type}.txt")
+
+        if not os.path.exists(file_path):
+            return
+
+        try:
+            # Read all lines
+            with open(file_path, 'r', encoding='utf-8') as f:
+                lines = f.readlines()
+
+            # Filter out the dead proxy and rewrite file
+            updated_lines = []
+            removed = False
+            for line in lines:
+                stripped_line = line.strip()
+                if stripped_line == proxy:
+                    removed = True
+                    continue  # Skip this line (remove the proxy)
+                updated_lines.append(line)
+
+            if removed:
+                with open(file_path, 'w', encoding='utf-8') as f:
+                    f.writelines(updated_lines)
+                self.log(f"Removed dead proxy {proxy} from {proxy_type}.txt")
+
+        except Exception as e:
+            self.log(
+                f"Error removing proxy {proxy} from {proxy_type} file: {e}")
 
     def validate_existing_proxies(self, proxy_type):
         """
@@ -170,14 +319,18 @@ class ProxyValidator:
             self.log(f"No existing {proxy_type} proxies to validate")
             return alive_proxies
 
-        # Filter out known dead proxies
+        # Filter out known dead proxies (skip testing them)
         proxies_to_check = [
             p for p in existing_proxies if p not in self.dead_proxies]
         skipped_dead = len(existing_proxies) - len(proxies_to_check)
 
+        # Remove known dead proxies from the data file
         if skipped_dead > 0:
             self.log(
-                f"Skipping {skipped_dead} known dead {proxy_type} proxies")
+                f"Found {skipped_dead} known dead {proxy_type} proxies in data file")
+            for proxy in existing_proxies:
+                if proxy in self.dead_proxies:
+                    self.remove_proxy_from_data_file(proxy, proxy_type)
 
         if not proxies_to_check:
             self.log(f"All existing {proxy_type} proxies are known to be dead")
@@ -189,7 +342,7 @@ class ProxyValidator:
         # Validate proxies with threading
         with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
             future_to_proxy = {
-                executor.submit(self.is_proxy_alive, proxy, proxy_type): proxy
+                executor.submit(self.is_proxy_alive, proxy, proxy_type, 'existing'): proxy
                 for proxy in proxies_to_check
             }
 
@@ -203,10 +356,14 @@ class ProxyValidator:
                         alive_proxies.add(proxy)
                         self.log(f"✓ {proxy} is alive")
                     else:
-                        self.log(f"✗ {proxy} is dead")
+                        self.log(
+                            f"✗ {proxy} is dead - removing from data file")
+                        # Remove dead proxy from data file
+                        self.remove_proxy_from_data_file(proxy, proxy_type)
                 except Exception as e:
                     self.log(f"✗ {proxy} validation error: {e}")
                     self.save_dead_proxy(proxy)
+                    self.remove_proxy_from_data_file(proxy, proxy_type)
 
         self.log(
             f"Found {len(alive_proxies)} alive {proxy_type} proxies out of {len(proxies_to_check)} checked")
@@ -245,7 +402,9 @@ class ProxyValidator:
                         # Basic IP format check
                         if ip.count('.') == 3 and port.isdigit():
                             proxies.add(line)
-                    except:
+                            # Track source for this proxy
+                            self.proxy_sources[line] = url
+                    except Exception:
                         continue
 
             self.log(
@@ -275,7 +434,7 @@ class ProxyValidator:
 
         with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
             future_to_proxy = {
-                executor.submit(self.is_proxy_alive, proxy, proxy_type): proxy
+                executor.submit(self.is_proxy_alive, proxy, proxy_type, self.proxy_sources.get(proxy)): proxy
                 for proxy in new_proxies
             }
 

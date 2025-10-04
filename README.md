@@ -33,12 +33,37 @@ python generate_headers.py
 python proxy_scraper.py
 ```
 
-The script will:
-- First validate existing proxies in the data folder
-- Remove dead proxies
-- Fetch new proxies from sources (concurrently)
-- Validate new proxies using random headers
-- Save up to 1000 alive proxies per type
+4. Analyze source quality (after running scraper):
+
+```bash
+python analyze_proxy_quality.py --days 7 --save --performance
+```
+
+The scraper will:
+
+- **Load dead proxies database** and clean entries older than 30 days
+- **Validate existing proxies** in data folder first
+- **Remove dead proxies** from data files and add them to dead_proxies.txt
+- **Fetch new proxies** from sources concurrently
+- **Skip proxies** already in dead_proxies database
+- **Validate new proxies** using random headers
+- **Log detailed validation** results for quality analysis
+- **Save up to 1000 alive proxies** per type with periodic auto-save
+
+## Quality Analysis
+
+The quality analyzer provides detailed statistics about each proxy source:
+
+- **Alive/Dead percentages** per source
+- **Response time analysis** for alive proxies
+- **Quality scores** and source rankings
+- **Performance metrics** and recommendations
+
+View analysis for different time periods:
+```bash
+python analyze_proxy_quality.py --days 1   # Last 24 hours
+python analyze_proxy_quality.py --days 30  # Last month
+```
 
 ## Output
 
