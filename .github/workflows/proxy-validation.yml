@@ -1,0 +1,181 @@
+name: Automated Proxy Validation
+
+on:
+  schedule:
+    # Run every 12 hours at 6:00 AM and 6:00 PM UTC
+    - cron: "0 6,18 * * *"
+  workflow_dispatch: # Allow manual trigger
+    inputs:
+      duration_minutes:
+        description: "Duration in minutes (default: 30)"
+        required: false
+        default: "30"
+        type: string
+
+env:
+  PYTHONUNBUFFERED: "1" # Ensure Python output is not buffered
+  VALIDATION_DURATION: ${{ github.event.inputs.duration_minutes || '30' }}
+
+jobs:
+  validate-proxies:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35 # 30 minutes for script + 5 minutes buffer
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Create data directory
+        run: mkdir -p data
+
+      - name: Download previous proxy data (if exists)
+        continue-on-error: true
+        run: |
+          # Try to download existing data files from the repository
+          if [ -f data/http.txt ]; then
+            echo "✓ Found existing HTTP proxies: $(wc -l < data/http.txt) lines"
+          fi
+          if [ -f data/socks5.txt ]; then
+            echo "✓ Found existing SOCKS5 proxies: $(wc -l < data/socks5.txt) lines"
+          fi
+          if [ -f data/dead_proxies.txt ]; then
+            echo "✓ Found dead proxies database: $(wc -l < data/dead_proxies.txt) lines"
+          fi
+
+      - name: Run proxy validation with configurable timeout
+        run: |
+          echo "🚀 Starting proxy validation (${VALIDATION_DURATION}-minute limit)..."
+          echo "⏰ Start time: $(date)"
+          echo "🔧 Configuration: ${VALIDATION_DURATION} minutes duration"
+
+          # Create a timeout script that will send SIGINT after specified minutes
+          timeout ${VALIDATION_DURATION}m python proxy_scraper.py || {
+            EXIT_CODE=$?
+            if [ $EXIT_CODE -eq 124 ]; then
+              echo "✅ Proxy scraper stopped after ${VALIDATION_DURATION}-minute timeout (expected behavior)"
+              echo "💾 Signal handler should have saved all progress automatically"
+            else
+              echo "⚠️ Proxy scraper exited with code: $EXIT_CODE"
+            fi
+          }
+
+          echo "🏁 End time: $(date)"
+
+          # Brief pause to ensure all file operations are complete
+          sleep 2
+
+      - name: Display validation results
+        run: |
+          echo "📊 VALIDATION RESULTS:"
+          echo "===================="
+
+          if [ -f data/http.txt ]; then
+            HTTP_COUNT=$(grep -c "^[0-9]" data/http.txt || echo "0")
+            echo "🌐 HTTP Proxies: $HTTP_COUNT"
+            echo "   Latest entries:"
+            grep "^[0-9]" data/http.txt | tail -5 || echo "   No valid HTTP proxies found"
+          else
+            echo "🌐 HTTP Proxies: 0 (file not found)"
+          fi
+
+          if [ -f data/socks5.txt ]; then
+            SOCKS5_COUNT=$(grep -c "^[0-9]" data/socks5.txt || echo "0")
+            echo "🔒 SOCKS5 Proxies: $SOCKS5_COUNT"
+            echo "   Latest entries:"
+            grep "^[0-9]" data/socks5.txt | tail -5 || echo "   No valid SOCKS5 proxies found"
+          else
+            echo "🔒 SOCKS5 Proxies: 0 (file not found)"
+          fi
+
+          if [ -f data/dead_proxies.txt ]; then
+            DEAD_COUNT=$(wc -l < data/dead_proxies.txt)
+            echo "💀 Dead Proxies Database: $DEAD_COUNT entries"
+          else
+            echo "💀 Dead Proxies Database: 0 entries"
+          fi
+
+          if [ -f data/proxy_validation_log.csv ]; then
+            LOG_COUNT=$(wc -l < data/proxy_validation_log.csv)
+            echo "📝 Validation Log Entries: $LOG_COUNT"
+          else
+            echo "📝 Validation Log Entries: 0"
+          fi
+
+      - name: Generate quality report
+        if: always()
+        run: |
+          echo "📈 Generating quality analysis report..."
+          if [ -f data/proxy_validation_log.csv ]; then
+            python analyze_proxy_quality.py --days 1 --save --worst-sources || echo "⚠️ Quality analysis failed"
+          else
+            echo "⚠️ No validation log found, skipping quality analysis"
+          fi
+
+      - name: Commit and push updated proxy files
+        if: always()
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+
+          # Add all data files
+          git add data/ || true
+
+          # Check if there are changes to commit
+          if git diff --staged --quiet; then
+            echo "📝 No changes to commit"
+          else
+            # Create commit with timestamp and stats
+            COMMIT_MSG="🤖 Automated proxy validation - $(date '+%Y-%m-%d %H:%M UTC')"
+            
+            if [ -f data/http.txt ]; then
+              HTTP_COUNT=$(grep -c "^[0-9]" data/http.txt || echo "0")
+              COMMIT_MSG="$COMMIT_MSG - HTTP: $HTTP_COUNT"
+            fi
+            
+            if [ -f data/socks5.txt ]; then
+              SOCKS5_COUNT=$(grep -c "^[0-9]" data/socks5.txt || echo "0")
+              COMMIT_MSG="$COMMIT_MSG, SOCKS5: $SOCKS5_COUNT"
+            fi
+            
+            git commit -m "$COMMIT_MSG"
+            git push
+            echo "✅ Successfully committed and pushed proxy updates"
+          fi
+
+      - name: Create summary comment
+        if: always()
+        run: |
+          echo "## 🎯 Proxy Validation Summary" >> $GITHUB_STEP_SUMMARY
+          echo "**Run Time:** $(date)" >> $GITHUB_STEP_SUMMARY
+          echo "**Duration:** 30 minutes (automated timeout)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ -f data/http.txt ]; then
+            HTTP_COUNT=$(grep -c "^[0-9]" data/http.txt || echo "0")
+            echo "- 🌐 **HTTP Proxies:** $HTTP_COUNT" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          if [ -f data/socks5.txt ]; then
+            SOCKS5_COUNT=$(grep -c "^[0-9]" data/socks5.txt || echo "0")
+            echo "- 🔒 **SOCKS5 Proxies:** $SOCKS5_COUNT" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          if [ -f data/dead_proxies.txt ]; then
+            DEAD_COUNT=$(wc -l < data/dead_proxies.txt)
+            echo "- 💀 **Dead Proxies Tracked:** $DEAD_COUNT" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Next Run:** 12 hours from now" >> $GITHUB_STEP_SUMMARY

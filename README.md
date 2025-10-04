@@ -15,6 +15,23 @@ Validity is now a dedicated proxy validator tool that checks and exports valid p
 
 ## Usage
 
+### 🤖 Automated (Recommended)
+
+The repository includes a **GitHub Action** that automatically runs every 12 hours:
+
+- **Schedule**: 6:00 AM and 6:00 PM UTC (every 12 hours)
+- **Duration**: 30 minutes per run with automatic shutdown
+- **Auto-save**: Progress saved every 10 seconds + graceful shutdown
+- **Auto-commit**: Results automatically committed to repository
+
+**Manual Trigger:**
+- Go to **Actions** tab in GitHub
+- Select **"Automated Proxy Validation"**
+- Click **"Run workflow"**
+- Optionally customize duration (default: 30 minutes)
+
+### 🔧 Manual Setup
+
 1. Install dependencies:
 
 ```bash
