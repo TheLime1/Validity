@@ -557,6 +557,12 @@ class ProxyValidator:
                         source_url = future_to_source[future]
                         try:
                             new_proxies = future.result()
+                            # Track duplicates across sources for logging
+                            duplicates_found = all_new_proxies & new_proxies
+                            if duplicates_found:
+                                self.log(
+                                    f"Found {len(duplicates_found)} duplicate proxies from {source_url}")
+
                             all_new_proxies.update(new_proxies)
                             self.log(
                                 f"✓ Fetched {len(new_proxies)} proxies from {source_url}")
