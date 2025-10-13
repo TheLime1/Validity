@@ -39,7 +39,9 @@ class ProxyQualityAnalyzer:
             return None
 
         cutoff_date = datetime.now() - timedelta(days=days)
-        self.data['timestamp'] = pd.to_datetime(self.data['timestamp'])
+        # Use format='mixed' to handle different timestamp formats in the CSV
+        self.data['timestamp'] = pd.to_datetime(
+            self.data['timestamp'], format='mixed')
 
         recent_data = self.data[self.data['timestamp'] >= cutoff_date]
         print(
