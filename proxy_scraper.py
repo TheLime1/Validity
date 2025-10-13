@@ -79,39 +79,41 @@ class ProxyValidator:
         """Add all changes and push to git repository if --push flag is enabled"""
         if not self.push_on_exit:
             return
-        
+
         try:
             self.log("🔄 Adding changes to git...")
             # Add all changes
-            result = subprocess.run(['git', 'add', '.'], 
-                                  cwd=os.path.dirname(os.path.abspath(__file__)),
-                                  capture_output=True, text=True, check=True)
-            
+            result = subprocess.run(['git', 'add', '.'],
+                                    cwd=os.path.dirname(
+                                        os.path.abspath(__file__)),
+                                    capture_output=True, text=True, check=True)
+
             # Check if there are any changes to commit
-            result = subprocess.run(['git', 'status', '--porcelain'], 
-                                  cwd=os.path.dirname(os.path.abspath(__file__)),
-                                  capture_output=True, text=True, check=True)
-            
+            result = subprocess.run(['git', 'status', '--porcelain'],
+                                    cwd=os.path.dirname(
+                                        os.path.abspath(__file__)),
+                                    capture_output=True, text=True, check=True)
+
             if result.stdout.strip():  # If there are changes
                 # Commit with timestamp
                 timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 commit_msg = f"Auto-update proxy data - {timestamp}"
-                
+
                 self.log(f"📝 Committing changes: {commit_msg}")
-                subprocess.run(['git', 'commit', '-m', commit_msg], 
-                             cwd=os.path.dirname(os.path.abspath(__file__)),
-                             capture_output=True, text=True, check=True)
-                
+                subprocess.run(['git', 'commit', '-m', commit_msg],
+                               cwd=os.path.dirname(os.path.abspath(__file__)),
+                               capture_output=True, text=True, check=True)
+
                 # Push to remote
                 self.log("⬆️  Pushing changes to remote repository...")
-                subprocess.run(['git', 'push'], 
-                             cwd=os.path.dirname(os.path.abspath(__file__)),
-                             capture_output=True, text=True, check=True)
-                
+                subprocess.run(['git', 'push'],
+                               cwd=os.path.dirname(os.path.abspath(__file__)),
+                               capture_output=True, text=True, check=True)
+
                 self.log("✅ Successfully pushed changes to git repository!")
             else:
                 self.log("ℹ️  No changes to commit.")
-                
+
         except subprocess.CalledProcessError as e:
             self.log(f"❌ Git operation failed: {e}")
             if e.stderr:
@@ -814,7 +816,7 @@ def main():
         description="Proxy Scraper and Validator - Daily script to maintain up to 1000 alive proxies per type (HTTP/SOCKS5)"
     )
     parser.add_argument(
-        "--push", 
+        "--push",
         action="store_true",
         help="Automatically git add and push changes when the program finishes or is interrupted with Ctrl+C"
     )
@@ -835,9 +837,9 @@ def main():
         default=50,
         help="Number of proxies to take from each source per batch (default: 50)"
     )
-    
+
     args = parser.parse_args()
-    
+
     # Create validator with parsed arguments
     validator = ProxyValidator(
         timeout=args.timeout,
@@ -845,10 +847,11 @@ def main():
         batch_size=args.batch_size,
         push_on_exit=args.push
     )
-    
+
     if args.push:
-        validator.log("🔄 Git push enabled - changes will be automatically pushed on exit")
-    
+        validator.log(
+            "🔄 Git push enabled - changes will be automatically pushed on exit")
+
     validator.run()
 
 

@@ -66,12 +66,12 @@ python proxy_scraper.py
 
 **Available Options:**
 
-| Parameter       | Type | Default | Description                                                                |
-| --------------- | ---- | ------- | -------------------------------------------------------------------------- |
-| `--push`        | flag | False   | Automatically git add and push changes when program finishes or Ctrl+C   |
-| `--timeout`     | int  | 3       | Timeout in seconds for proxy validation                                   |
-| `--max-workers` | int  | auto    | Maximum number of worker threads (auto-calculated based on CPU)           |
-| `--batch-size`  | int  | 50      | Number of proxies to take from each source per batch                      |
+| Parameter       | Type | Default | Description                                                            |
+| --------------- | ---- | ------- | ---------------------------------------------------------------------- |
+| `--push`        | flag | False   | Automatically git add and push changes when program finishes or Ctrl+C |
+| `--timeout`     | int  | 3       | Timeout in seconds for proxy validation                                |
+| `--max-workers` | int  | auto    | Maximum number of worker threads (auto-calculated based on CPU)        |
+| `--batch-size`  | int  | 50      | Number of proxies to take from each source per batch                   |
 
 **Examples:**
 
