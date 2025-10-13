@@ -64,6 +64,8 @@ python generate_headers.py
 python proxy_scraper.py
 ```
 
+**⚠️ Important:** The script **ALWAYS** performs `git pull` at startup to ensure you have the latest changes before running.
+
 **Available Options:**
 
 | Parameter       | Type | Default | Description                                                            |
@@ -94,6 +96,7 @@ python analyze_proxy_quality.py --days 7 --save --performance
 
 The scraper will:
 
+- **🔄 Pull latest changes** from remote repository (mandatory first step)
 - **Load dead proxies database** and clean entries older than 30 days
 - **Validate existing proxies** in data folder first
 - **Remove dead proxies** from data files and add them to dead_proxies.txt

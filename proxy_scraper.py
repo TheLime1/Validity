@@ -2,6 +2,12 @@
 """
 Proxy Scraper and Validator
 Daily script to maintain up to 1000 alive proxies per type (HTTP/SOCKS5)
+
+Features:
+- ALWAYS performs git pull at startup to get latest changes
+- Optional git push on exit with --push flag
+- Multi-threaded validation with auto-save
+- Dead proxy tracking and cleanup
 """
 
 import argparse
@@ -74,6 +80,51 @@ class ProxyValidator:
         """Simple logging with timestamp"""
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         print(f"[{timestamp}] {message}")
+
+    def git_pull_first(self):
+        """Pull latest changes from remote repository before starting"""
+        try:
+            self.log("⬇️  Pulling latest changes from remote repository...")
+
+            # First, fetch the latest changes
+            subprocess.run(['git', 'fetch'],
+                           cwd=os.path.dirname(os.path.abspath(__file__)),
+                           capture_output=True, text=True, check=True)
+
+            # Then pull to merge changes
+            result = subprocess.run(['git', 'pull'],
+                                    cwd=os.path.dirname(
+                                        os.path.abspath(__file__)),
+                                    capture_output=True, text=True, check=True)
+
+            if "Already up to date" in result.stdout:
+                self.log("✅ Repository is already up to date.")
+            else:
+                self.log(
+                    "✅ Successfully pulled latest changes from remote repository!")
+                # Show what was updated if there were changes
+                if result.stdout.strip():
+                    lines = result.stdout.strip().split('\n')
+                    for line in lines[:3]:  # Show first 3 lines of output
+                        if line.strip():
+                            self.log(f"   {line.strip()}")
+
+        except subprocess.CalledProcessError as e:
+            self.log(f"❌ Git pull failed: {e}")
+            if e.stderr:
+                error_msg = e.stderr.strip()
+                self.log(f"   Error details: {error_msg}")
+                # Check for common git pull issues
+                if "uncommitted changes" in error_msg.lower():
+                    self.log(
+                        "   💡 Tip: You have uncommitted changes. Use --push to auto-commit, or commit/stash them manually.")
+                elif "merge conflict" in error_msg.lower():
+                    self.log(
+                        "   💡 Tip: Resolve merge conflicts manually before running the script.")
+            self.log("⚠️  Continuing with local version...")
+        except Exception as e:
+            self.log(f"❌ Unexpected error during git pull: {e}")
+            self.log("⚠️  Continuing with local version...")
 
     def git_push_changes(self):
         """Add all changes and push to git repository if --push flag is enabled"""
@@ -716,6 +767,10 @@ class ProxyValidator:
         Main execution function with enhanced features
         """
         self.log("Starting proxy validation and scraping...")
+
+        # Always pull latest changes first (mandatory)
+        self.git_pull_first()
+        self.log("")
 
         # Log performance configuration
         self.log_performance_config()
