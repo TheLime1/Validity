@@ -64,6 +64,28 @@ python generate_headers.py
 python proxy_scraper.py
 ```
 
+**Available Options:**
+
+| Parameter       | Type | Default | Description                                                                |
+| --------------- | ---- | ------- | -------------------------------------------------------------------------- |
+| `--push`        | flag | False   | Automatically git add and push changes when program finishes or Ctrl+C   |
+| `--timeout`     | int  | 3       | Timeout in seconds for proxy validation                                   |
+| `--max-workers` | int  | auto    | Maximum number of worker threads (auto-calculated based on CPU)           |
+| `--batch-size`  | int  | 50      | Number of proxies to take from each source per batch                      |
+
+**Examples:**
+
+```bash
+# Basic usage
+python proxy_scraper.py
+
+# With automatic git push
+python proxy_scraper.py --push
+
+# Custom settings with git push
+python proxy_scraper.py --push --timeout 5 --max-workers 100 --batch-size 25
+```
+
 4. Analyze source quality (after running scraper):
 
 ```bash
