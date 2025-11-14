@@ -14,21 +14,56 @@ import argparse
 
 class ProxyQualityAnalyzer:
     def __init__(self, log_file="data/proxy_validation_log.csv"):
-        """Initialize analyzer with log file path"""
+        """Initialize analyzer with log file path or directory"""
         self.log_file = log_file
+        self.log_dir = os.path.dirname(log_file) if log_file else "data"
         self.data = None
 
     def load_data(self):
-        """Load proxy validation data from CSV log"""
-        if not os.path.exists(self.log_file):
-            print(f"❌ Log file not found: {self.log_file}")
-            print("Run proxy_scraper.py first to generate validation logs.")
-            return False
-
+        """Load proxy validation data from CSV log(s) - supports multiple rotated files"""
         try:
-            self.data = pd.read_csv(self.log_file)
-            print(f"✅ Loaded {len(self.data)} validation records")
+            log_files = []
+            
+            # Always try to find all rotated log files in the directory
+            if os.path.exists(self.log_dir):
+                for file in os.listdir(self.log_dir):
+                    if file.startswith("proxy_validation_log") and file.endswith(".csv"):
+                        log_files.append(os.path.join(self.log_dir, file))
+            
+            # If no files found in directory, check if specific file exists
+            if not log_files and os.path.exists(self.log_file):
+                log_files.append(self.log_file)
+            
+            if not log_files:
+                print(f"❌ No log files found in {self.log_dir}")
+                print("Run proxy_scraper.py first to generate validation logs.")
+                return False
+            
+            # Sort log files to ensure consistent ordering
+            log_files.sort()
+            
+            # Load and concatenate all log files
+            dataframes = []
+            for log_file in log_files:
+                try:
+                    df = pd.read_csv(log_file)
+                    dataframes.append(df)
+                except Exception as e:
+                    print(f"⚠️  Warning: Could not load {os.path.basename(log_file)}: {e}")
+            
+            if not dataframes:
+                print("❌ No valid log files could be loaded")
+                return False
+            
+            if len(dataframes) == 1:
+                self.data = dataframes[0]
+                print(f"✅ Loaded {len(self.data)} validation records from {os.path.basename(log_files[0])}")
+            else:
+                self.data = pd.concat(dataframes, ignore_index=True)
+                print(f"✅ Loaded {len(self.data)} validation records from {len(dataframes)} log file(s)")
+            
             return True
+            
         except Exception as e:
             print(f"❌ Error loading data: {e}")
             return False

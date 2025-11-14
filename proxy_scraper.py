@@ -15,6 +15,7 @@ import csv
 import multiprocessing
 import os
 import random
+import re
 import requests
 import signal
 import subprocess
@@ -26,6 +27,9 @@ from datetime import datetime, timedelta
 
 
 class ProxyValidator:
+    # Maximum CSV file size in bytes (95MB to stay under GitHub's 100MB limit with buffer)
+    MAX_CSV_SIZE = 95 * 1024 * 1024  # 95MB in bytes
+    
     def __init__(self, timeout=3, max_workers=None, batch_size=50, push_on_exit=False):
         self.timeout = timeout
         # Dynamic worker adjustment based on system capabilities
@@ -45,9 +49,10 @@ class ProxyValidator:
         self.dead_proxies = set()  # Set of proxy IPs for fast lookup
         self.dead_proxies_with_dates = {}  # Dict with proxy -> timestamp mapping
 
-        # Detailed logging for quality analysis
-        self.proxy_log_file = os.path.join(
-            self.data_dir, "proxy_validation_log.csv")
+        # Detailed logging for quality analysis with rotation support
+        self.proxy_log_base = os.path.join(
+            self.data_dir, "proxy_validation_log")
+        self.proxy_log_file = None  # Will be set by _init_proxy_log()
         self.proxy_log_lock = threading.Lock()
         self._init_proxy_log()
 
@@ -192,10 +197,50 @@ class ProxyValidator:
             tier = "CONSERVATIVE"
         self.log(f"   Performance Tier: {tier}")
 
+    def _get_active_log_file(self):
+        """Get the current active log file or create a new one if needed"""
+        # Find existing log files
+        log_files = []
+        for file in os.listdir(self.data_dir):
+            if file.startswith("proxy_validation_log") and file.endswith(".csv"):
+                log_files.append(file)
+        
+        if not log_files:
+            # No existing log files, create the first one
+            return os.path.join(self.data_dir, "proxy_validation_log.csv")
+        
+        # Sort log files to get the latest one
+        log_files.sort()
+        latest_log = os.path.join(self.data_dir, log_files[-1])
+        
+        # Check if the latest log file is under the size limit
+        if os.path.exists(latest_log):
+            file_size = os.path.getsize(latest_log)
+            if file_size < self.MAX_CSV_SIZE:
+                return latest_log
+        
+        # Need to create a new log file
+        # Extract number from last file or start at 1
+        import re
+        match = re.search(r'proxy_validation_log_(\d+)\.csv', log_files[-1])
+        if match:
+            next_num = int(match.group(1)) + 1
+        else:
+            # First file was proxy_validation_log.csv, next is _1.csv
+            next_num = 1
+        
+        return os.path.join(self.data_dir, f"proxy_validation_log_{next_num}.csv")
+
     def _init_proxy_log(self):
-        """Initialize the detailed proxy validation log CSV file"""
+        """Initialize the detailed proxy validation log CSV file with rotation support"""
         # Create data directory if it doesn't exist
         os.makedirs(self.data_dir, exist_ok=True)
+        
+        # Clean up old log entries (30+ days)
+        self._cleanup_old_log_entries()
+        
+        # Get the active log file
+        self.proxy_log_file = self._get_active_log_file()
 
         # Create CSV header if file doesn't exist
         if not os.path.exists(self.proxy_log_file):
@@ -206,10 +251,106 @@ class ProxyValidator:
                     'status', 'response_time_ms', 'test_url_used'
                 ])
 
+    def _cleanup_old_log_entries(self):
+        """Remove log entries older than 30 days from all log files"""
+        try:
+            cutoff_date = datetime.now() - timedelta(days=30)
+            
+            # Find all log files
+            log_files = []
+            for file in os.listdir(self.data_dir):
+                if file.startswith("proxy_validation_log") and file.endswith(".csv"):
+                    log_files.append(os.path.join(self.data_dir, file))
+            
+            if not log_files:
+                return
+            
+            total_removed = 0
+            files_to_delete = []
+            
+            for log_file in log_files:
+                try:
+                    # Read the CSV file
+                    rows_to_keep = []
+                    header = None
+                    removed_count = 0
+                    
+                    with open(log_file, 'r', newline='', encoding='utf-8') as f:
+                        reader = csv.reader(f)
+                        header = next(reader, None)
+                        
+                        if header:
+                            rows_to_keep.append(header)
+                        
+                        for row in reader:
+                            if len(row) == 0:
+                                continue
+                            
+                            try:
+                                # Parse timestamp (first column)
+                                timestamp_str = row[0]
+                                entry_date = datetime.fromisoformat(timestamp_str)
+                                
+                                # Keep entries newer than 30 days
+                                if entry_date >= cutoff_date:
+                                    rows_to_keep.append(row)
+                                else:
+                                    removed_count += 1
+                            except (ValueError, IndexError):
+                                # Keep rows with invalid timestamps (better safe than sorry)
+                                rows_to_keep.append(row)
+                    
+                    # If file has only header or no valid entries, mark for deletion
+                    if len(rows_to_keep) <= 1:
+                        files_to_delete.append(log_file)
+                        total_removed += removed_count
+                    # Otherwise rewrite the file with cleaned data
+                    elif removed_count > 0:
+                        with open(log_file, 'w', newline='', encoding='utf-8') as f:
+                            writer = csv.writer(f)
+                            writer.writerows(rows_to_keep)
+                        total_removed += removed_count
+                        
+                except Exception as e:
+                    self.log(f"Error cleaning log file {log_file}: {e}")
+            
+            # Delete empty log files (but keep at least one)
+            if len(files_to_delete) < len(log_files):
+                for file_path in files_to_delete:
+                    try:
+                        os.remove(file_path)
+                        self.log(f"Removed empty log file: {os.path.basename(file_path)}")
+                    except Exception as e:
+                        self.log(f"Error removing log file {file_path}: {e}")
+            
+            if total_removed > 0:
+                self.log(f"Cleaned {total_removed} log entries older than 30 days")
+                
+        except Exception as e:
+            self.log(f"Error during log cleanup: {e}")
+
     def log_proxy_validation(self, proxy, proxy_type, source_url, status, response_time_ms=None, test_url=None):
-        """Log detailed proxy validation results to CSV file"""
+        """Log detailed proxy validation results to CSV file with automatic rotation"""
         with self.proxy_log_lock:
             try:
+                # Check if current log file exceeds size limit
+                if os.path.exists(self.proxy_log_file):
+                    file_size = os.path.getsize(self.proxy_log_file)
+                    if file_size >= self.MAX_CSV_SIZE:
+                        # Rotate to a new log file
+                        self.proxy_log_file = self._get_active_log_file()
+                        
+                        # Create new file with header
+                        if not os.path.exists(self.proxy_log_file):
+                            with open(self.proxy_log_file, 'w', newline='', encoding='utf-8') as f:
+                                writer = csv.writer(f)
+                                writer.writerow([
+                                    'timestamp', 'proxy', 'proxy_type', 'source_url',
+                                    'status', 'response_time_ms', 'test_url_used'
+                                ])
+                            self.log(f"Rotated to new log file: {os.path.basename(self.proxy_log_file)}")
+                
+                # Append to the current log file
                 with open(self.proxy_log_file, 'a', newline='', encoding='utf-8') as f:
                     writer = csv.writer(f)
                     writer.writerow([
