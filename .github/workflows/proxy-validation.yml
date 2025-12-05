@@ -1,10 +1,7 @@
-name: Automated Proxy Validation
+name: Manual Proxy Validation
 
 on:
-  schedule:
-    # Run every 12 hours at 6:00 AM and 6:00 PM UTC
-    - cron: "0 6,18 * * *"
-  workflow_dispatch: # Allow manual trigger
+  workflow_dispatch: # Manual trigger only
     inputs:
       duration_minutes:
         description: "Duration in minutes (default: 30)"
@@ -178,4 +175,4 @@ jobs:
           fi
 
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Next Run:** 12 hours from now" >> $GITHUB_STEP_SUMMARY
+          echo "**Trigger:** Manual" >> $GITHUB_STEP_SUMMARY
