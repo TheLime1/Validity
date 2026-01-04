@@ -245,6 +245,18 @@ The validated proxies are saved in the `data/` folder:
 - `data/http.txt` - Valid HTTP proxies
 - `data/socks5.txt` - Valid SOCKS5 proxies
 
+## Validation Logs
+
+Proxy validation logs are stored in CSV format in the `data/` folder:
+
+- `data/proxy_validation_log.csv` - Main validation log
+- `data/proxy_validation_log_N.csv` - Rotated log files (when main file exceeds 95MB)
+
+**Log Rotation & Cleanup:**
+- CSV files automatically rotate when reaching 95MB to stay under GitHub's 100MB limit
+- Log entries older than 30 days are automatically removed during startup
+- The analyzer automatically reads from all rotated log files
+
 ## Sources
 
 All proxy sources are publicly available and listed in `sources.csv` for transparency.
