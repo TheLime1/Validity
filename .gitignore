@@ -1,5 +1,9 @@
 #test
 test.py
+
+# Proxy validation logs (can be large, rotated files)
+data/proxy_validation_log*.csv
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
